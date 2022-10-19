@@ -18,15 +18,16 @@ class VectorAttribute:
 
     def __iter__(self): yield from [self.compound, self.x, self.y, self.z]
 
+    def get_members_as_list(self): return [self.x, self.y, self.z]
+
     def initialize_vector(self, uAttr, cAttr):
         self.compound = cAttr.create(self.long_name, self.short_name)
         self.x = uAttr.create(f'{self.long_name}X', f'{self.short_name}X', OpenMaya.MFnUnitAttribute.kDistance)
         self.y = uAttr.create(f'{self.long_name}Y', f'{self.short_name}Y', OpenMaya.MFnUnitAttribute.kDistance)
         self.z = uAttr.create(f'{self.long_name}Z', f'{self.short_name}Z', OpenMaya.MFnUnitAttribute.kDistance)
 
-        cAttr.addChild(self.x)
-        cAttr.addChild(self.y)
-        cAttr.addChild(self.z)
+        for child in self.get_members_as_list():
+            cAttr.addChild(child)
 
         cAttr.setReadable(not self.is_input)
         cAttr.setWritable(self.is_input)
@@ -46,16 +47,16 @@ class VectorAttribute:
             self.connect_all_to_output(affects_function, attribute)
 
     def get_data(self, data) -> Vector:
-        result = Vector(
-            data.inputValue(self.x).asFloat(),
-            data.inputValue(self.y).asFloat(),
-            data.inputValue(self.z).asFloat())
-        return result
+        handlers = [data.inputValue(child) for child in self.get_members_as_list()]
+        return [data.outputValue(handle) for handle in handlers]
 
-    def set_data(self, data, value: Vector):
-        data.inputValue(self.x).setFloat(value.x)
-        data.inputValue(self.y).setFloat(value.y)
-        data.inputValue(self.z).setFloat(value.z)
+    def set_data(self, data, value: tuple[float, float, float]):
+        oHX.setFloat(1)
+        oHY.setFloat(2)
+        oHZ.setFloat(3)
+        #data.inputValue(self.x).setFloat(value.x)
+        #data.inputValue(self.y).setFloat(value.y)
+        #data.inputValue(self.z).setFloat(value.z)
 
 
 class RobotSolver(OpenMayaMPx.MPxNode):
@@ -67,9 +68,11 @@ class RobotSolver(OpenMayaMPx.MPxNode):
 
     def compute(self, plug, data):
         if plug in RobotSolver.output_data:
-            oHX = data.outputValue(RobotSolver.output_data.x)
-            oHY = data.outputValue(RobotSolver.output_data.y)
-            oHZ = data.outputValue(RobotSolver.output_data.z)
+            # oHX = data.outputValue(RobotSolver.output_data.x)
+            # oHY = data.outputValue(RobotSolver.output_data.y)
+            # oHZ = data.outputValue(RobotSolver.output_data.z)
+            oHX, oHY, oHZ = self.past_frame_data.get_data(data)
+
             oHX.setFloat(1)
             oHY.setFloat(2)
             oHZ.setFloat(3)
