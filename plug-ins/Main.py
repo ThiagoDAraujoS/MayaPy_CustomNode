@@ -8,37 +8,57 @@ VERSION = 0.1
 
 
 class RobotSolver(OpenMayaMPx.MPxNode):
-    #frame_data_vector  = OpenMaya.MObject()
-
     frame_data_past    = OpenMaya.MObject()
     frame_data_present = OpenMaya.MObject()
-    frame_data_future  = OpenMaya.MObject()
 
-    frame_data_output  = OpenMaya.MObject()
+    frequency = OpenMaya.MObject()
+    dampening = OpenMaya.MObject()
+    feedback  = OpenMaya.MObject()
+
+    output  = OpenMaya.MObject()
 
     def __init__(self):
         OpenMayaMPx.MPxNode.__init__(self)
 
     def compute(self, plug, data):
-        if plug == RobotSolver.output_data:
-            past_handler    = data.inputValue(RobotSolver.past_frame_data)
-            present_handler = data.inputValue(RobotSolver.present_frame_data)
-            future_handler  = data.inputValue(RobotSolver.future_frame_data)
+        if plug == RobotSolver.output:
+            handle_past    = data.inputValue(RobotSolver.frame_data_past)
+            handle_current = data.inputValue(RobotSolver.frame_data_present)
+            handle_output  = data.outputValue(RobotSolver.output)
 
-            output_handle   = data.outputValue(RobotSolver.output_data)
+            d_past    = handle_past.asFloat3()
+            d_current = handle_current.asFloat3()
 
-            past_data    = past_handler.asFloat()
-            present_data = present_handler.asFloat()
-            future_data  = future_handler.asFloat()
+            result = SecondOrderDynamics()
 
             result = 0  # <- here do math stuff and finish with result
 
-            output_handle.setFloat(result)
+            handle_output.set3Float(d_past[0], d_past[1], d_past[2])
             data.setClean(plug)
 
 
-def create():
-    return OpenMayaMPx.asMPxPtr(RobotSolver())
+class SecondOrderDynamics:
+    def __init__(self, f, z, r):
+        # constants
+        self.k1 = z / (math.pi * f)
+        self.k2 = 1 / ((2 * math.pi * f) * (2 * math.pi * f))
+        self.k3 = r * z / (2 * math.pi * f)
+
+        # variables
+        self.xp = (0, 0, 0)
+        self.y = (0, 0, 0)
+        self.yd = 0
+
+    def update(self, T: float, x: OpenMaya.MVector, xd: OpenMaya.MVector = None):
+        if xd == null:
+            xd = (x - xp) / T
+            self.xp = x
+        self.y = self.y + T * self.yd
+        self.yd = self.yd + T * (x + k3 * xd - y - k1 * self.yd) / k2
+        return self.y
+
+
+def create(): return OpenMayaMPx.asMPxPtr(RobotSolver())
 
 
 def initializePlugin(mobject):
@@ -51,37 +71,41 @@ def uninitializePlugin(mobject):
     m_plugin.deregisterNode(NODE_ID)
 
 
-def set_plug_attributes(isInput, attr, short_name, long_name):
-    plug = attr.create(long_name, short_name, OpenMaya.MFnNumericData.kFloat, 0.0)
-    attr.setReadable(not isInput)
-    attr.setWritable(isInput)
-    attr.setKeyable(isInput)
-    attr.setStorable(isInput)
-    return plug
-
-
 def initialize():
     nAttr  = OpenMaya.MFnNumericAttribute()
-    #cAttr  = OpenMaya.MFnCompoundAttribute()
 
-    #RobotSolver.frame_data_vector  = cAttr.create("vector",  "frame_data_vector")
-    #attr.setReadable(False)
-    #attr.setWritable(True)
-    #attr.setKeyable(True)
-    #attr.setStorable(True)
+    def set_plug_default_properties(isInput: bool) -> None:
+        nAttr.setReadable(not isInput)
+        nAttr.setWritable(isInput)
+        nAttr.setKeyable(isInput)
+        nAttr.setStorable(isInput)
 
-    RobotSolver.frame_data_past    = set_plug_attributes(True,  nAttr, "past",    "frame_data_past")
-    RobotSolver.frame_data_present = set_plug_attributes(True,  nAttr, "present", "frame_data_present")
-    RobotSolver.frame_data_future  = set_plug_attributes(True,  nAttr, "future",  "frame_data_future")
-    RobotSolver.frame_data_output  = set_plug_attributes(False, nAttr, "output",  "frame_data_output")
+    def create_point(is_input, short_name, long_name):
+        plug = nAttr.createPoint(long_name, short_name)
+        set_plug_default_properties(is_input)
+        return plug
 
-    #RobotSolver.addAttribute(RobotSolver.frame_data_vector)
+    def create_single(is_input, short_name, long_name):
+        plug = nAttr.create(long_name, short_name, OpenMaya.MFnNumericData.kFloat)
+        set_plug_default_properties(is_input)
+        return plug
+
+    RobotSolver.frequency          = create_single(True, "htz", "frequency")
+    RobotSolver.dampening          = create_single(True, "dp", "dampening")
+    RobotSolver.feedback           = create_single(True, "fb", "feedback")
+    RobotSolver.frame_data_past    = create_point(True, "pst", "past_frame_data")
+    RobotSolver.frame_data_present = create_point(True, "cur", "present_frame_data")
+    RobotSolver.output             = create_point(False, "out", "output")
+
+    RobotSolver.addAttribute(RobotSolver.frequency)
+    RobotSolver.addAttribute(RobotSolver.dampening)
+    RobotSolver.addAttribute(RobotSolver.feedback)
     RobotSolver.addAttribute(RobotSolver.frame_data_past)
     RobotSolver.addAttribute(RobotSolver.frame_data_present)
-    RobotSolver.addAttribute(RobotSolver.frame_data_future)
-    RobotSolver.addAttribute(RobotSolver.frame_data_output)
+    RobotSolver.addAttribute(RobotSolver.output)
 
-    #RobotSolver.attributeAffects(RobotSolver.frame_data_vector,  RobotSolver.frame_data_output)
-    RobotSolver.attributeAffects(RobotSolver.frame_data_past,    RobotSolver.frame_data_output)
-    RobotSolver.attributeAffects(RobotSolver.frame_data_present, RobotSolver.frame_data_output)
-    RobotSolver.attributeAffects(RobotSolver.frame_data_future,  RobotSolver.frame_data_output)
+    RobotSolver.attributeAffects(RobotSolver.frequency, RobotSolver.output)
+    RobotSolver.attributeAffects(RobotSolver.dampening, RobotSolver.output)
+    RobotSolver.attributeAffects(RobotSolver.feedback, RobotSolver.output)
+    RobotSolver.attributeAffects(RobotSolver.frame_data_past, RobotSolver.output)
+    RobotSolver.attributeAffects(RobotSolver.frame_data_present, RobotSolver.output)
