@@ -1,103 +1,89 @@
 import math
-from maya import OpenMaya, OpenMayaMPx
-from maya.OpenMaya import MVector as Vector
+import maya.OpenMaya as om
+from maya import OpenMayaMPx
+
 
 NODE_NAME = 'RobotSolver'
-NODE_ID = OpenMaya.MTypeId(0x62115)
-AUTHOR = "Thiago Silva"
-VERSION = 0.1
+NODE_ID   = om.MTypeId(0x62115)
+AUTHOR    = "Thiago Silva"
+VERSION   = 0.1
+AXIS      = ["X", "Y", "Z"]
 
 
 class VectorAttribute:
-    def __init__(self, is_input, short_name, long_name):
-        self.compound = OpenMaya.MObject()
-        self.x, self.y, self.z = OpenMaya.MObject(), OpenMaya.MObject(), OpenMaya.MObject()
-        self.long_name  = long_name
-        self.short_name = short_name
-        self.is_input   = is_input
+    def __init__(self):
+        self.compound: om.MObject = om.MObject()
+        self.values: om.MObject = [om.MObject(), om.MObject(), om.MObject()]
+        self.attribute_affects = None
 
-    def __iter__(self): yield from [self.compound, self.x, self.y, self.z]
+    def __iter__(self) -> om.MObject:
+        yield self.compound
+        yield from self.values
 
-    def get_members_as_list(self): return [self.x, self.y, self.z]
+    def initialize(self, uAttr:  om.MFnUnitAttribute, cAttr: om.MFnCompoundAttribute, long_name: str, short_name: str, is_input: bool, attribute_affects) -> None:
+        self.attribute_affects = attribute_affects
+        self.compound = cAttr.create(long_name, short_name)
 
-    def initialize_vector(self, uAttr, cAttr):
-        self.compound = cAttr.create(self.long_name, self.short_name)
-        self.x = uAttr.create(f'{self.long_name}X', f'{self.short_name}X', OpenMaya.MFnUnitAttribute.kDistance)
-        self.y = uAttr.create(f'{self.long_name}Y', f'{self.short_name}Y', OpenMaya.MFnUnitAttribute.kDistance)
-        self.z = uAttr.create(f'{self.long_name}Z', f'{self.short_name}Z', OpenMaya.MFnUnitAttribute.kDistance)
+        for i in range(len(self.values)):
+            self.values[i] = uAttr.create(f'{long_name}{AXIS[i]}', f'{short_name}{AXIS[i]}', om.MFnUnitAttribute.kDistance)
+            cAttr.addChild(self.values[i])
 
-        for child in self.get_members_as_list():
-            cAttr.addChild(child)
+        cAttr.setReadable(not is_input)
+        cAttr.setWritable(is_input)
+        cAttr.setKeyable(is_input)
+        cAttr.setStorable(is_input)
 
-        cAttr.setReadable(not self.is_input)
-        cAttr.setWritable(self.is_input)
-        cAttr.setKeyable(self.is_input)
-        cAttr.setStorable(self.is_input)
+    def connect_to_vector_output(self, target_vector) -> None:
+        for attribute in self.values:
+            self.attribute_affects(attribute, target_vector.compound)
 
-    def connect_all_to_output(self, affects_function, target_output):
+    def connect_to_single_output(self, target_output: om.MObject) -> None:
         for attribute in self:
-            affects_function(attribute, target_output)
+            self.attribute_affects(attribute, target_output)
 
-    def connect_input_to_all(self, affects_function, target_input):
-        for attribute in self:
-            affects_function(target_input, attribute)
+    def get_data(self, data):
+        handles = [data.inputValue(attribute) for attribute in self.values]
+        return handles[0].asFloat(), handles[1].asFloat(), handles[2].asFloat()
 
-    def connect_to_output_vector(self, affects_function, target_output_vector):
-        for attribute in target_output_vector:
-            self.connect_all_to_output(affects_function, attribute)
-
-    def get_data(self, data) -> Vector:
-        handlers = [data.inputValue(child) for child in self.get_members_as_list()]
-        return [data.outputValue(handle) for handle in handlers]
-
-    def set_data(self, data, value: tuple[float, float, float]):
-        oHX.setFloat(1)
-        oHY.setFloat(2)
-        oHZ.setFloat(3)
-        #data.inputValue(self.x).setFloat(value.x)
-        #data.inputValue(self.y).setFloat(value.y)
-        #data.inputValue(self.z).setFloat(value.z)
+    def set_data(self, data, value: om.MVector) -> None:
+        handles = [data.outputValue(attribute) for attribute in self.values]
+        for handle, v in zip(handles, value):
+            print(f"setting handle with value {str(v)}")
+            handle.setFloat(v)
 
 
 class RobotSolver(OpenMayaMPx.MPxNode):
-    past_frame_data    = VectorAttribute(True,  "p", "past_data")
-    current_frame_data = VectorAttribute(True,  "d", "data")
-    output_data        = VectorAttribute(False, "o", "output")
+    past_frame_data    = VectorAttribute()
+    current_frame_data = VectorAttribute()
+    output_data        = VectorAttribute()
 
     def __init__(self): OpenMayaMPx.MPxNode.__init__(self)
 
     def compute(self, plug, data):
-        if plug in RobotSolver.output_data:
-            # oHX = data.outputValue(RobotSolver.output_data.x)
-            # oHY = data.outputValue(RobotSolver.output_data.y)
-            # oHZ = data.outputValue(RobotSolver.output_data.z)
-            oHX, oHY, oHZ = self.past_frame_data.get_data(data)
+        if plug == RobotSolver.output_data.compound:
+            print("output compound was triggered")
+            past_vector = RobotSolver.past_frame_data.get_data(data)
+            curr_vector = RobotSolver.current_frame_data.get_data(data)
 
-            oHX.setFloat(1)
-            oHY.setFloat(2)
-            oHZ.setFloat(3)
+            print(f"curr_vector = {str(curr_vector[0])} {str(curr_vector[1])} {str(curr_vector[2])}")
+            print(f"past_vector = {str(past_vector[0])} {str(past_vector[1])} {str(past_vector[2])}")
 
-            """past_data = RobotSolver.past_frame_data.get_data(data)
-            curr_data = RobotSolver.current_frame_data.get_data(data)
-            # print(f"{past_data.x} {past_data.y} {past_data.z}")
-            # print(f"{curr_data.x} {curr_data.y} {curr_data.z}")
-            RobotSolver.output_data.set_data(data, Vector(0, 0, 0))
-            data.setClean()"""
+            handle_x = data.outputValue(RobotSolver.output_data.values[0])
+            handle_y = data.outputValue(RobotSolver.output_data.values[1])
+            handle_z = data.outputValue(RobotSolver.output_data.values[2])
 
-       # past_handler    = data.inputValue(RobotSolver.past_frame_data)
-       # present_handler = data.inputValue(RobotSolver.present_frame_data)
-       # future_handler  = data.inputValue(RobotSolver.future_frame_data)
+            handle_x.setFloat(2)
+            handle_y.setFloat(4)
+            handle_z.setFloat(6)
 
-       # output_handle   = data.outputValue(RobotSolver.output_data)
+            data.setClean(plug)
 
-       # past_data    = past_handler.asFloat()
-       # present_data = present_handler.asFloat()
-       # future_data  = future_handler.asFloat()
-
-       # result = 0  # <- here do math stuff and finish with result
-
-       # output_handle.setFloat(result)
-       # data.setClean(plug)
+        elif plug == RobotSolver.output_data.values[0]:
+            print("I am triggering value X")
+        elif plug == RobotSolver.output_data.values[1]:
+            print("I am triggering value Y")
+        elif plug == RobotSolver.output_data.values[2]:
+            print("I am triggering value Z")
 
 
 def create(): return OpenMayaMPx.asMPxPtr(RobotSolver())
@@ -114,17 +100,16 @@ def uninitializePlugin(mobject):
 
 
 def initialize():
-    cAttr = OpenMaya.MFnCompoundAttribute()
-    uAttr = OpenMaya.MFnUnitAttribute()
+    cAttr = om.MFnCompoundAttribute()
+    uAttr = om.MFnUnitAttribute()
 
-    RobotSolver.past_frame_data.initialize_vector(uAttr, cAttr)
-    RobotSolver.current_frame_data.initialize_vector(uAttr, cAttr)
-    RobotSolver.output_data.initialize_vector(uAttr, cAttr)
+    RobotSolver.past_frame_data.initialize(uAttr, cAttr, "past_data", "p", True, RobotSolver.attributeAffects)
+    RobotSolver.current_frame_data.initialize(uAttr, cAttr, "data", "d", True, RobotSolver.attributeAffects)
+    RobotSolver.output_data.initialize(uAttr, cAttr, "output", "o", False, RobotSolver.attributeAffects)
 
     RobotSolver.addAttribute(RobotSolver.past_frame_data.compound)
     RobotSolver.addAttribute(RobotSolver.current_frame_data.compound)
     RobotSolver.addAttribute(RobotSolver.output_data.compound)
 
-    RobotSolver.past_frame_data.connect_to_output_vector(RobotSolver.attributeAffects, RobotSolver.output_data)
-    RobotSolver.current_frame_data.connect_to_output_vector(RobotSolver.attributeAffects, RobotSolver.output_data)
-
+    RobotSolver.past_frame_data.connect_to_vector_output(RobotSolver.output_data)
+    RobotSolver.current_frame_data.connect_to_vector_output(RobotSolver.output_data)
