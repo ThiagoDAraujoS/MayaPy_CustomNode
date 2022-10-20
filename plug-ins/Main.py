@@ -1,5 +1,6 @@
 import math
 from maya import OpenMaya, OpenMayaMPx
+import maya.cmds as cmds
 
 NODE_NAME = 'RobotSolver'
 NODE_ID = OpenMaya.MTypeId(0x62115)
@@ -22,18 +23,36 @@ class RobotSolver(OpenMayaMPx.MPxNode):
 
     def compute(self, plug, data):
         if plug == RobotSolver.output:
-            handle_past    = data.inputValue(RobotSolver.frame_data_past)
-            handle_current = data.inputValue(RobotSolver.frame_data_present)
-            handle_output  = data.outputValue(RobotSolver.output)
+            past      = data.inputValue(RobotSolver.frame_data_past).asFloat3()
+            current   = data.inputValue(RobotSolver.frame_data_present).asFloat3()
+            frequency = data.inputValue(RobotSolver.frequency).asFloat()
+            damp      = data.inputValue(RobotSolver.dampening).asFloat()
+            feedback  = data.inputValue(RobotSolver.feedback).asFloat()
+            output    = data.outputValue(RobotSolver.output)
 
-            d_past    = handle_past.asFloat3()
-            d_current = handle_current.asFloat3()
+            """ Solution 1
+            Check current time,
+            If it is > than last saved time
+                Integrate system and save new values
+            Else
+                reset integration
+            """
 
-            result = SecondOrderDynamics()
+            """
+            Integrate the past X frames and merge their values
+            """
 
-            result = 0  # <- here do math stuff and finish with result
 
-            handle_output.set3Float(d_past[0], d_past[1], d_past[2])
+
+
+            # compute constants
+            k1 = damp / (math.pi * frequency)
+            k2 = 1 / (2 * math.pi * frequency) ** 2
+            k3 = feedback * damp / (2 * math.pi * frequency)
+
+
+
+            data.outputValue(RobotSolver.output).set3Float(past[0], past[1], past[2])
             data.setClean(plug)
 
 
@@ -86,7 +105,7 @@ def initialize():
         return plug
 
     def create_single(is_input, short_name, long_name):
-        plug = nAttr.create(long_name, short_name, OpenMaya.MFnNumericData.kFloat)
+        plug = nAttr.create(long_name, short_name, OpenMaya.MFnNumericData.kFloat, 0.5)
         set_plug_default_properties(is_input)
         return plug
 
