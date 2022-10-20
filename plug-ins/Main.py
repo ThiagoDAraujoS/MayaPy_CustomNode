@@ -1,13 +1,10 @@
 import math
-import maya.OpenMaya as om
-from maya import OpenMayaMPx
-
+from maya import OpenMaya, OpenMayaMPx
 
 NODE_NAME = 'RobotSolver'
-NODE_ID   = om.MTypeId(0x62115)
-AUTHOR    = "Thiago Silva"
-VERSION   = 0.1
-AXIS      = ["X", "Y", "Z"]
+NODE_ID = OpenMaya.MTypeId(0x62115)
+AUTHOR = "Thiago Silva"
+VERSION = 0.1
 
 
 class RobotSolver(OpenMayaMPx.MPxNode):
@@ -23,37 +20,6 @@ class RobotSolver(OpenMayaMPx.MPxNode):
     def __init__(self):
         OpenMayaMPx.MPxNode.__init__(self)
 
-        cAttr.setReadable(not is_input)
-        cAttr.setWritable(is_input)
-        cAttr.setKeyable(is_input)
-        cAttr.setStorable(is_input)
-
-    def connect_to_vector_output(self, target_vector) -> None:
-        for attribute in self.values:
-            self.attribute_affects(attribute, target_vector.compound)
-
-    def connect_to_single_output(self, target_output: om.MObject) -> None:
-        for attribute in self:
-            self.attribute_affects(attribute, target_output)
-
-    def get_data(self, data):
-        handles = [data.inputValue(attribute) for attribute in self.values]
-        return handles[0].asFloat(), handles[1].asFloat(), handles[2].asFloat()
-
-    def set_data(self, data, value: om.MVector) -> None:
-        handles = [data.outputValue(attribute) for attribute in self.values]
-        for handle, v in zip(handles, value):
-            print(f"setting handle with value {str(v)}")
-            handle.setFloat(v)
-
-
-class RobotSolver(OpenMayaMPx.MPxNode):
-    past_frame_data    = VectorAttribute()
-    current_frame_data = VectorAttribute()
-    output_data        = VectorAttribute()
-
-    def __init__(self): OpenMayaMPx.MPxNode.__init__(self)
-
     def compute(self, plug, data):
         if plug == RobotSolver.output:
             handle_past    = data.inputValue(RobotSolver.frame_data_past)
@@ -65,19 +31,11 @@ class RobotSolver(OpenMayaMPx.MPxNode):
 
             result = SecondOrderDynamics()
 
-            handle_x.setFloat(2)
-            handle_y.setFloat(4)
-            handle_z.setFloat(6)
+            result = 0  # <- here do math stuff and finish with result
 
             handle_output.set3Float(d_past[0], d_past[1], d_past[2])
             data.setClean(plug)
 
-        elif plug == RobotSolver.output_data.values[0]:
-            print("I am triggering value X")
-        elif plug == RobotSolver.output_data.values[1]:
-            print("I am triggering value Y")
-        elif plug == RobotSolver.output_data.values[2]:
-            print("I am triggering value Z")
 
 class SecondOrderDynamics:
     def __init__(self, f, z, r):
